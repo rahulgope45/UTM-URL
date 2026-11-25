@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Marketing Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <strong>UTM Attribution</strong>
+    <nav>
+      <a href="/dashboard/" aria-current="page">Dashboard</a>
+      <a href="/builder/">Link builder</a>
+      <a href="/store/">Demo store</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Which platform should we market more on?</h1>
+    <p class="sub">Revenue each channel brought in, compared with what you spent on it.</p>
+
+    <section class="panel row">
+      <label>Period
+        <select id="days">
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="365">Last 12 months</option>
+        </select>
+      </label>
+      <label>Group by
+        <select id="groupBy">
+          <option value="source_medium" selected>Platform + channel type</option>
+          <option value="source">Platform only</option>
+          <option value="medium">Channel type (medium)</option>
+          <option value="campaign">Campaign</option>
+        </select>
+      </label>
+      <label>Credit the sale to
+        <select id="model">
+          <option value="last_touch">Last marketing click</option>
+          <option value="first_touch">First click (discovery)</option>
+          <option value="linear">All clicks equally</option>
+        </select>
+      </label>
+      <span class="muted" id="modelHelp"></span>
+    </section>
+
+    <div class="cards" id="cards"></div>
+
+    <section class="panel">
+      <h2>What to do</h2>
+      <ul class="insights" id="insights"></ul>
+    </section>
+
+    <section class="panel">
+      <h2>By channel</h2>
+      <div class="scroll"><table id="report"></table></div>
+      <p class="muted" id="note"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Record ad spend</h2>
+      <p class="muted">Enter what you paid each platform so the dashboard can work out return on ad spend (ROAS). Use the same names as in your UTM links, e.g. google + cpc.</p>
+      <form class="row" id="spendForm">
+        <label>Platform (utm_source)<input name="source" required placeholder="instagram"></label>
+        <label>Channel type (utm_medium)
+          <select name="medium">
+            <option value="cpc">cpc (paid ads)</option>
+            <option value="social">social (boosted posts)</option>
+            <option value="email">email (paid tools)</option>
+            <option value="influencer">influencer</option>
+            <option value="referral">referral / affiliate</option>
+          </select>
+        </label>
+        <label>Amount<input name="amount" type="number" min="1" step="any" required></label>
+        <label>Date<input name="spentOn" type="date" required></label>
+        <button type="submit">Add spend</button>
+        <span id="spendMsg" role="status"></span>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const MODEL_HELP = {
+      last_touch: 'The most recent campaign visit before the sale gets full credit. Best for "what closes sales".',
+      first_touch: 'The visit that first brought the customer gets full credit. Best for "what finds new customers".',
+      linear: 'Every visit before the sale shares the credit. A balanced view of the whole journey.',
+    };
+    let currency = 'INR';
+    const money = (n, digits = 0) => n == null ? '—' : new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+    const orders = (n) => num(n, Number.isInteger(Math.round(n * 10) / 10) ? 0 : 1);
+    const num = (n, d = 0) => n == null ? '—' : n.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d });
+    const pct = (n) => n == null ? '—' : `${(n * 100).toFixed(1)}%`;
+    const ratio = (n) => n == null ? '—' : `${n.toFixed(2)}×`;
+    const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+
+    function renderCards(t) {
+      const cards = [
+        ['Revenue', money(t.revenue)], ['Orders', num(t.conversions)], ['Visits', num(t.visits)],
+        ['Conversion rate', pct(t.conversionRate)], ['Ad spend', money(t.spend)], ['Overall ROAS', ratio(t.roas)],
+      ];
+      $('cards').replaceChildren(...cards.map(([label, value]) => {
+        const c = el('div', null, 'card');
+        c.append(el('div', label, 'label'), el('div', value, 'value'));
+        return c;
+      }));
+    }
+
+    // Turn the numbers into plain-language recommendations.
+    function renderInsights(report) {
+      const items = [];
+      const rows = report.rows.filter((r) => r.key !== '(direct)');
+      const MIN_ORDERS = 3; // don't judge a channel on 1-2 sales
+      const withSpend = report.groupBy === 'source' || report.groupBy === 'source_medium';
+      if (withSpend) {
+        const paid = rows.filter((r) => r.spend);
+        const judged = paid.filter((r) => r.conversions >= MIN_ORDERS).sort((a, b) => b.roas - a.roas);
+        if (judged[0] && judged[0].roas >= 1) items.push(['good', `Scale up ${judged[0].key}: every ${money(1)} spent brings back ${money(judged[0].roas, 2)} in revenue (ROAS ${ratio(judged[0].roas)}).`]);
+        for (const r of judged.filter((r) => r.roas < 1)) items.push(['bad', `${r.key} is losing money: ${money(r.spend)} spent, ${money(r.revenue)} earned (ROAS ${ratio(r.roas)}). Cut budget or fix the targeting/offer.`]);
+        for (const r of paid.filter((r) => r.conversions === 0)) items.push(['bad', `${r.key}: ${money(r.spend)} spent and no sales in this period.`]);
+        for (const r of paid.filter((r) => r.conversions > 0 && r.conversions < MIN_ORDERS)) items.push([r.roas < 0.5 ? 'bad' : 'warn', `${r.key}: ${money(r.spend)} spent for only ${orders(r.conversions)} orders so far (ROAS ${ratio(r.roas)}). ${r.roas < 0.5 ? 'Not paying off — pause or rethink it.' : 'Too early to judge; keep testing.'}`]);
+        const free = rows.filter((r) => !r.spend && r.revenue > 0).sort((a, b) => b.revenue - a.revenue)[0];
+        if (free) items.push(['info', `${free.key} brings ${money(free.revenue)} with no ad spend. Put more effort here (more posts, more emails).`]);
+        if (!paid.length) items.push(['info', 'Add ad spend below to see which paid platforms are profitable.']);
+      } else {
+        const top = [...rows].filter((r) => r.conversions >= MIN_ORDERS).sort((a, b) => (b.revenuePerVisit ?? 0) - (a.revenuePerVisit ?? 0))[0];
+        if (top) items.push(['good', `${top.key} earns the most per visit (${money(top.revenuePerVisit)}). Send more traffic its way.`]);
+        items.push(['info', 'Group by "Platform + channel type" to compare against ad spend.']);
+      }
+      const busy = rows.filter((r) => r.visits >= 50).sort((a, b) => (a.conversionRate ?? 0) - (b.conversionRate ?? 0))[0];
+      if (busy && busy.conversionRate < 0.01) items.push(['warn', `${busy.key} sends lots of visits (${num(busy.visits)}) but only ${pct(busy.conversionRate)} buy. Check the landing page matches the ad/post.`]);
+      if (!report.rows.length) items.push(['info', 'No data yet. Run "npm run seed" or use the demo store.']);
+      $('insights').replaceChildren(...items.map(([cls, text]) => el('li', text, cls)));
+    }
+
+    function renderTable(report) {
+      const showSpend = report.groupBy === 'source' || report.groupBy === 'source_medium';
+      const cols = [
+        ['Channel', (r) => r.key],
+        ['Visits', (r) => num(r.visits)],
+        ['Orders', (r) => orders(r.conversions)],
+        ['Conv. rate', (r) => pct(r.conversionRate)],
+        ['Revenue', (r) => money(r.revenue)],
+        ['Rev. / visit', (r) => money(r.revenuePerVisit)],
+        ['Avg. order', (r) => money(r.avgOrderValue)],
+        ...(showSpend ? [['Spend', (r) => money(r.spend)], ['ROAS', (r) => ratio(r.roas)], ['Cost / order', (r) => money(r.costPerOrder)]] : []),
+      ];
+      const maxRev = Math.max(1, ...report.rows.map((r) => r.revenue));
+      const thead = el('thead'); const hr = el('tr');
+      cols.forEach(([h]) => hr.append(el('th', h)));
+      thead.append(hr);
+      const tbody = el('tbody');
+      for (const r of report.rows) {
+        const tr = el('tr');
+        cols.forEach(([, f], i) => {
+          const td = el('td', f(r));
+          if (i === 4) { const b = el('div', null, 'bar'); b.style.width = `${(r.revenue / maxRev) * 100}%`; td.append(b); }
+          tr.append(td);
+        });
+        tbody.append(tr);
+      }
+      const tfoot = el('tfoot'); const fr = el('tr');
+      cols.forEach(([, f]) => fr.append(el('td', f({ ...report.totals, key: 'Total' }))));
+      tfoot.append(fr);
+      $('report').replaceChildren(thead, tbody, tfoot);
+      $('note').textContent = `Sales are credited to visits up to ${report.lookbackDays} days before the purchase. ROAS = revenue ÷ spend (above 1× means the platform pays for itself).`;
+    }
+
+    async function load() {
+      const q = new URLSearchParams({ days: $('days').value, groupBy: $('groupBy').value, model: $('model').value });
+      $('modelHelp').textContent = MODEL_HELP[$('model').value];
+      const res = await fetch(`/api/report?${q}`);
+      const report = await res.json();
+      if (!res.ok) { $('insights').replaceChildren(el('li', report.error, 'bad')); return; }
+      currency = report.currency;
+      renderCards(report.totals);
+      renderInsights(report);
+      renderTable(report);
+    }
+
+    ['days', 'groupBy', 'model'].forEach((id) => $(id).addEventListener('change', load));
+
+    const form = $('spendForm');
+    form.spentOn.value = new Date().toISOString().slice(0, 10);
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = { source: form.source.value, medium: form.medium.value, amount: Number(form.amount.value), spentOn: form.spentOn.value };
+      const res = await fetch('/api/spend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json();
+      $('spendMsg').textContent = res.ok ? 'Saved.' : data.error;
+      $('spendMsg').className = res.ok ? 'muted' : 'error';
+      if (res.ok) { form.amount.value = ''; load(); }
+    });
+
+    load();
+  </script>
+</body>
+</html>

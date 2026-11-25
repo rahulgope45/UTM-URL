@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UTM Link Builder</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <strong>UTM Attribution</strong>
+    <nav>
+      <a href="/dashboard/">Dashboard</a>
+      <a href="/builder/" aria-current="page">Link builder</a>
+      <a href="/store/">Demo store</a>
+    </nav>
+  </header>
+  <main>
+    <h1>UTM link builder</h1>
+    <p class="sub">Use a link like this for every post, ad and email, so each sale can be traced back to where it came from.</p>
+
+    <section class="panel">
+      <form id="form" class="row">
+        <label>Page URL<input name="url" type="url" required placeholder="https://yourshop.com/sale"></label>
+        <label>Source (platform)
+          <input name="source" list="sources" required placeholder="instagram">
+          <datalist id="sources">
+            <option value="google"><option value="facebook"><option value="instagram"><option value="linkedin">
+            <option value="twitter"><option value="youtube"><option value="newsletter"><option value="whatsapp">
+          </datalist>
+        </label>
+        <label>Medium (channel type)
+          <select name="medium" required>
+            <option value="social">social (organic post)</option>
+            <option value="cpc">cpc (paid ad)</option>
+            <option value="email">email</option>
+            <option value="referral">referral / partner</option>
+            <option value="influencer">influencer</option>
+            <option value="qr">qr (print/offline)</option>
+          </select>
+        </label>
+        <label>Campaign<input name="campaign" required placeholder="diwali_sale"></label>
+        <label>Content (optional)<input name="content" placeholder="story_v2"></label>
+        <label><span><input name="shorten" type="checkbox" checked> Shorten with Kutt</span></label>
+        <button type="submit">Create link</button>
+      </form>
+      <p class="muted">Preview: <code id="preview">—</code></p>
+      <div id="out"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Recent links</h2>
+      <div class="scroll"><table id="links"></table></div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('form');
+    const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+    const norm = (v) => v.trim().toLowerCase().replace(/\s+/g, '_');
+
+    function preview() {
+      try {
+        const u = new URL(form.url.value);
+        for (const k of ['source', 'medium', 'campaign', 'content']) if (form[k].value.trim()) u.searchParams.set(`utm_${k}`, norm(form[k].value));
+        document.getElementById('preview').textContent = u.toString();
+      } catch { document.getElementById('preview').textContent = '—'; }
+    }
+    form.addEventListener('input', preview);
+
+    function copyRow(label, value) {
+      const row = el('div', null, 'result');
+      const btn = el('button', 'Copy', 'secondary');
+      btn.type = 'button';
+      btn.addEventListener('click', async () => { await navigator.clipboard.writeText(value); btn.textContent = 'Copied'; setTimeout(() => (btn.textContent = 'Copy'), 1500); });
+      row.append(el('span', label, 'tag'), el('code', value), btn);
+      return row;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const out = document.getElementById('out');
+      const body = Object.fromEntries(['url', 'source', 'medium', 'campaign', 'content'].map((k) => [k, form[k].value]));
+      body.shorten = form.shorten.checked;
+      const res = await fetch('/api/links', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) { out.replaceChildren(el('p', data.error, 'error')); return; }
+      const parts = [];
+      if (data.shortUrl) parts.push(copyRow('short', data.shortUrl));
+      parts.push(copyRow('full', data.longUrl));
+      if (data.warning) parts.push(el('p', data.warning, 'muted'));
+      out.replaceChildren(...parts);
+      loadLinks();
+    });
+
+    async function loadLinks() {
+      const links = await (await fetch('/api/links')).json();
+      const head = el('tr');
+      ['Created', 'Source', 'Medium', 'Campaign', 'Link'].forEach((h) => head.append(el('th', h)));
+      const rows = links.map((l) => {
+        const tr = el('tr');
+        [new Date(l.created_at).toLocaleString(), l.source, l.medium, l.campaign, l.short_url ?? l.long_url]
+          .forEach((v, i) => { const td = el('td', v); if (i === 4) td.style.textAlign = 'left'; tr.append(td); });
+        return tr;
+      });
+      const thead = el('thead'); thead.append(head);
+      const tbody = el('tbody'); tbody.append(...rows);
+      document.getElementById('links').replaceChildren(thead, tbody);
+    }
+    loadLinks();
+  </script>
+</body>
+</html>

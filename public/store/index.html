@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo Store</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/tracker.js" defer></script>
+</head>
+<body>
+  <header>
+    <strong>UTM Attribution</strong>
+    <nav>
+      <a href="/dashboard/">Dashboard</a>
+      <a href="/builder/">Link builder</a>
+      <a href="/store/" aria-current="page">Demo store</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Demo store</h1>
+    <p class="sub">A pretend shop with the tracker installed. Arrive through a campaign link, buy something, then check the dashboard.</p>
+
+    <section class="panel">
+      <h2>1. Arrive like a customer would</h2>
+      <p class="muted">Each link simulates a click from a different platform. Open one, then buy.</p>
+      <div class="chips">
+        <a href="/store/?utm_source=instagram&amp;utm_medium=social&amp;utm_campaign=diwali_sale">Instagram post</a>
+        <a href="/store/?utm_source=newsletter&amp;utm_medium=email&amp;utm_campaign=weekly_digest">Email newsletter</a>
+        <a href="/store/?utm_source=google&amp;utm_medium=cpc&amp;utm_campaign=brand_search">Google ad</a>
+        <a href="/store/?utm_source=facebook&amp;utm_medium=cpc&amp;utm_campaign=retargeting">Facebook ad</a>
+        <a href="/store/?utm_source=linkedin&amp;utm_medium=social&amp;utm_campaign=b2b_launch">LinkedIn post</a>
+      </div>
+      <p class="muted" id="arrival"></p>
+    </section>
+
+    <section class="panel">
+      <h2>2. Buy something</h2>
+      <div class="products" id="products"></div>
+      <p id="status" role="status"></p>
+    </section>
+
+    <section class="panel">
+      <h2>3. Start over as a new customer</h2>
+      <p class="muted">Clears this browser's visitor ID so the next purchase counts as a different person.</p>
+      <button class="secondary" id="reset">Become a new visitor</button>
+    </section>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const arrival = document.getElementById('arrival');
+    arrival.textContent = params.get('utm_source')
+      ? `You arrived via: ${params.get('utm_source')} / ${params.get('utm_medium') ?? '(not set)'} / ${params.get('utm_campaign') ?? '(not set)'}`
+      : 'You arrived directly (no UTM parameters).';
+
+    const status = document.getElementById('status');
+    const fmt = (n, c) => new Intl.NumberFormat(undefined, { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(n);
+
+    async function buy(product, button) {
+      button.disabled = true;
+      status.textContent = '';
+      try {
+        // A real shop sends the visitor ID to its OWN backend with the order;
+        // that backend then reports the sale (see /api/demo/checkout in src/app.js).
+        const res = await fetch('/api/demo/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId: product.id, visitorId: window.UTMTracker.visitorId() }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        status.textContent = `Order placed: ${product.name} for ${fmt(product.price, product.currency)}. Check the dashboard.`;
+        status.className = '';
+      } catch (e) {
+        status.textContent = `Checkout failed: ${e.message}`;
+        status.className = 'error';
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    fetch('/api/demo/products').then((r) => r.json()).then((products) => {
+      const wrap = document.getElementById('products');
+      for (const p of products) {
+        const card = document.createElement('div');
+        card.className = 'panel product';
+        const name = document.createElement('h2');
+        name.textContent = p.name;
+        const price = document.createElement('div');
+        price.className = 'price';
+        price.textContent = fmt(p.price, p.currency);
+        const btn = document.createElement('button');
+        btn.textContent = 'Buy now';
+        btn.addEventListener('click', () => buy(p, btn));
+        card.append(name, price, btn);
+        wrap.append(card);
+      }
+    });
+
+    document.getElementById('reset').addEventListener('click', () => {
+      localStorage.removeItem('utm_vid');
+      sessionStorage.removeItem('utm_session');
+      location.href = '/store/';
+    });
+  </script>
+</body>
+</html>
