@@ -24,3 +24,9 @@
 	encode zstd gzip
 	reverse_proxy kutt:3000
 }
+
+# Anyone who types the bare IP (http://1.2.3.4) is sent to the app's real address.
+# HTTPS on the bare IP can't work: certificates are issued for names, not IPs.
+http:// {
+	redir https://{$APP_HOST}{uri} 302
+}

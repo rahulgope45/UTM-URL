@@ -45,6 +45,9 @@ fi
 # 4. Build and start
 echo "→ Building and starting containers (first time takes a few minutes)..."
 docker compose up -d --build --remove-orphans
+# Caddy reads Caddyfile/auth.caddy only at start, and git pull replaces those files,
+# so restart it to apply any changes (a second or two of downtime).
+docker compose restart caddy
 
 # 5. Wait for the app to become healthy
 echo -n "→ Waiting for the app"
