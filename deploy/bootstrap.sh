@@ -9,6 +9,11 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 [[ $EUID -eq 0 ]] || { echo "error: run with sudo" >&2; exit 1; }
+if ! docker info >/dev/null 2>&1 && command -v docker >/dev/null; then
+  echo "error: Docker is installed but not usable as root (docker info failed)." >&2
+  echo "       This script is meant for the EC2 server. Are you on your own computer?" >&2
+  exit 1
+fi
 
 # 1. Docker (official convenience script; includes the compose plugin)
 if ! command -v docker >/dev/null; then

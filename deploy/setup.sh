@@ -41,7 +41,13 @@ else
       IP=$(curl -fsS -m 2 -H "X-aws-ec2-metadata-token: $TOKEN" \
         http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || true)
     fi
-    [[ -n "$IP" ]] || IP=$(curl -fsS -m 5 https://checkip.amazonaws.com | tr -d '[:space:]')
+    if [[ -z "$IP" ]]; then
+      echo "warning: this does not look like an EC2 instance (no instance metadata)." >&2
+      echo "         Run this ON THE SERVER (EC2 -> Connect), not on your own computer." >&2
+      read -rp "Continue anyway with this machine's public IP? [y/N]: " ANYWAY
+      [[ "${ANYWAY,,}" == y* ]] || exit 1
+      IP=$(curl -fsS -m 5 https://checkip.amazonaws.com | tr -d '[:space:]')
+    fi
   fi
   [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "error: could not determine a public IPv4 address (got '$IP')" >&2; exit 1; }
   DASHED=${IP//./-}
@@ -72,8 +78,14 @@ read -rp "Load demo data (fake visits and sales)? [Y/n]: " WANT_SEED
 
 # --- Write files -------------------------------------------------------------
 echo "Hashing password..."
-HASH=$(printf '%s' "$ADMIN_PASSWORD" | docker run --rm -i caddy:2 caddy hash-password 2>/dev/null | tail -n1)
-[[ "$HASH" == \$2* ]] || { echo "error: could not hash the password with Caddy" >&2; exit 1; }
+if ! HASH_OUT=$(printf '%s' "$ADMIN_PASSWORD" | docker run --rm -i caddy:2 caddy hash-password 2>&1); then
+  echo "error: could not hash the password with Caddy. Docker said:" >&2
+  printf '%s\n' "$HASH_OUT" | tail -n 5 >&2
+  echo "hint: check that Docker works for this user: docker info" >&2
+  exit 1
+fi
+HASH=$(printf '%s\n' "$HASH_OUT" | grep '^\$2' | tail -n1 || true)
+[[ -n "$HASH" ]] || { echo "error: unexpected output from caddy hash-password:" >&2; printf '%s\n' "$HASH_OUT" | tail -n 5 >&2; exit 1; }
 
 umask 077
 cat > auth.caddy <<EOF
