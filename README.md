@@ -107,6 +107,10 @@ scripts/seed.js   demo data
 test/             node:test suites
 ```
 
+## Deployment
+
+See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the plan: a short-term AWS deployment on one EC2 instance with Docker Compose and Caddy, HTTPS without a domain via sslip.io, and the dashboard behind a password. It includes a cost estimate and teardown steps.
+
 ## Known limits and next steps
 
 - **Privacy:** the tracker stores an anonymous ID in `localStorage`. Under GDPR, ePrivacy or India's DPDP Act, load it only after the visitor consents. No personal data is collected.

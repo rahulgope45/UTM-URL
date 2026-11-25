@@ -36,6 +36,8 @@ Marketing attribution app: records where visitors come from (UTM / referrer), ti
 - [Link builder & Kutt](docs/context/link-builder.md): UTM URLs, Kutt shortener
 - [Demo store & seed data](docs/context/demo-and-seed.md): the demo shop and `scripts/seed.js`
 
+- [Deployment plan](docs/DEPLOY.md): AWS EC2 + Docker Compose + Caddy, sslip.io HTTPS (status: plan, Phase 1 not started)
+
 **When you change a feature, update its context file in the same commit.** Add a new file for a new feature and link it here.
 
 ## Conventions
