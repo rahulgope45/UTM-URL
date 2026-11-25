@@ -13,10 +13,13 @@ your backend reports the sale ────────────────�
 ## Quick start
 
 ```bash
-npm install
-npm run seed     # 60 days of fake data, so the dashboard has something to show
-npm start        # http://localhost:3000
+./start-local.sh          # installs deps, seeds demo data on first run, starts http://localhost:3000
+./start-local.sh --seed   # wipe and re-seed the demo data first
+./start-local.sh --dev    # auto-restart on file changes
+./start-local.sh --port 4000
 ```
+
+Or step by step: `npm install`, `npm run seed` (60 days of fake data), then `npm start`.
 
 | Page | What it's for |
 |---|---|

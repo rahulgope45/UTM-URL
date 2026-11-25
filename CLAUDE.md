@@ -3,6 +3,7 @@
 Marketing attribution app: records where visitors come from (UTM / referrer), ties that to sales, and shows revenue and ROAS per platform so you can decide where to market more. It's a learning side project, built to industry-standard practice.
 
 ## Commands
+- `./start-local.sh [--seed] [--dev] [--port N]`: one-step local run. It checks Node ≥ 22.13, loads `.env`, runs `npm ci` when deps are missing or stale, seeds when the DB file doesn't exist, then starts the server.
 - `npm start`: run the server (`.env` is loaded if present). The default port is 3000.
 - `npm run dev`: run with file watching.
 - `npm run seed`: wipe the DB and add 60 days of fake data.
