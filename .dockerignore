@@ -1,0 +1,11 @@
+node_modules
+data
+*.db
+*.db-*
+.env
+.git
+deploy
+docs
+test
+*.md
+start-local.sh

@@ -50,6 +50,7 @@
 
     <section class="panel">
       <h2>Recent links</h2>
+      <p class="muted">Results for each link's source / medium / campaign (sales credited to the last marketing click). Links with the same three values share numbers. Reload to refresh.</p>
       <div class="scroll"><table id="links"></table></div>
     </section>
   </main>
@@ -96,11 +97,12 @@
     async function loadLinks() {
       const links = await (await fetch('/api/links')).json();
       const head = el('tr');
-      ['Created', 'Source', 'Medium', 'Campaign', 'Link'].forEach((h) => head.append(el('th', h)));
+      ['Created', 'Source', 'Medium', 'Campaign', 'Visits', 'Orders', 'Revenue', 'Link'].forEach((h) => head.append(el('th', h)));
       const rows = links.map((l) => {
         const tr = el('tr');
-        [new Date(l.created_at).toLocaleString(), l.source, l.medium, l.campaign, l.short_url ?? l.long_url]
-          .forEach((v, i) => { const td = el('td', v); if (i === 4) td.style.textAlign = 'left'; tr.append(td); });
+        const money = new Intl.NumberFormat(undefined, { style: 'currency', currency: l.currency, maximumFractionDigits: 0 }).format(l.revenue);
+        [new Date(l.created_at).toLocaleString(), l.source, l.medium, l.campaign, l.visits.toLocaleString(), l.orders.toLocaleString(undefined, { maximumFractionDigits: 1 }), money, l.short_url ?? l.long_url]
+          .forEach((v, i) => { const td = el('td', v); if (i === 7) td.style.textAlign = 'left'; tr.append(td); });
         return tr;
       });
       const thead = el('thead'); thead.append(head);

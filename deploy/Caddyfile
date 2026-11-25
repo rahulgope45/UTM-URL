@@ -1,0 +1,26 @@
+# Caddy gets and renews HTTPS certificates automatically for both hosts.
+# APP_HOST / KUTT_HOST come from deploy/.env, e.g. app.13-233-10-20.sslip.io
+
+{$APP_HOST} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	# Admin pages and APIs need the password. tracker.js, /api/collect/*,
+	# the demo store and /api/health stay public: visitors' browsers call them.
+	@admin path / /dashboard /dashboard/* /builder /builder/* /api/report* /api/spend* /api/links*
+	import /etc/caddy/auth.caddy
+
+	reverse_proxy app:3000
+}
+
+{$KUTT_HOST} {
+	encode zstd gzip
+	reverse_proxy kutt:3000
+}

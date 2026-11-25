@@ -115,7 +115,20 @@ export function createApp({ db, config }) {
   });
 
   // ---- UTM link builder ----
-  app.get('/api/links', (req, res) => res.json(listLinks(db)));
+  // Each link gets the results of its source/medium/campaign (last-touch, last 2 years).
+  // Links sharing the same three values share the same numbers.
+  app.get('/api/links', (req, res) => {
+    const now = Date.now();
+    const report = buildReport(db, {
+      model: 'last_touch', groupBy: 'campaign', lookbackDays: config.lookbackDays, currency: config.currency,
+      from: new Date(now - 730 * 86_400_000).toISOString(), to: new Date(now + 60_000).toISOString(),
+    });
+    const stats = new Map(report.rows.map((r) => [r.key, r]));
+    res.json(listLinks(db).map((l) => {
+      const s = stats.get(`${l.source} / ${l.medium} / ${l.campaign}`);
+      return { ...l, visits: s?.visits ?? 0, orders: s?.conversions ?? 0, revenue: s?.revenue ?? 0, currency: config.currency };
+    }));
+  });
   app.post('/api/links', async (req, res) => {
     const { url, source, medium, campaign, term, content, shorten } = req.body ?? {};
     let longUrl;
@@ -152,6 +165,11 @@ export function createApp({ db, config }) {
     });
   }
 
+  app.get('/api/health', (req, res) => {
+    db.prepare('SELECT 1').get(); // throws (-> 500) if the database is unusable
+    res.json({ ok: true });
+  });
+
   app.get('/', (req, res) => res.redirect('/dashboard/'));
   app.use(express.static(PUBLIC_DIR));
 
@@ -160,7 +178,9 @@ export function createApp({ db, config }) {
   app.use((err, req, res, next) => {
     const status = err.status ?? err.statusCode ?? 500;
     if (status >= 500) console.error(err);
-    res.status(status).json({ error: status >= 500 ? 'internal error' : err.message });
+    // Errors we raised on purpose (HttpError) carry a safe, useful message; anything else stays generic.
+    const message = err instanceof HttpError || status < 500 ? err.message : 'internal error';
+    res.status(status).json({ error: message });
   });
 
   return app;

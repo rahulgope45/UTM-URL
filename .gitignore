@@ -3,3 +3,7 @@ data/
 .env
 *.db
 *.db-*
+
+# deploy secrets
+deploy/auth.caddy
+deploy/.seed-pending

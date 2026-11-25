@@ -1,6 +1,6 @@
 # Deployment plan: AWS, short-term, no domain
 
-**Status:** plan, not yet implemented.
+**Status:** Phase 1 done and tested locally (HTTPS, password rules, Kutt shortening, data persists across restarts). Phase 2 is next.
 
 **Goal:** run the app (and optionally Kutt) on AWS for a few days or weeks, paid from free credits, reachable over **HTTPS** without buying a domain, and easy to tear down completely.
 
@@ -42,37 +42,45 @@ The limits: it depends on a third-party DNS service, and the URL looks odd. Both
 | Fargate + ALB | ❌ The load balancer alone costs about $16+/month, which is overkill. |
 | Lightsail | ⚖️ Also works (fixed price, simpler console), but it uses Lightsail's own billing and may not draw on your AWS credits the same way. Check first. |
 
-## Phase 1: add to the repo (before touching AWS)
-- [ ] `Dockerfile`: `node:24-slim`, `npm ci --omit=dev`, runs as a non-root user, `HEALTHCHECK`, `DB_FILE=/data/utm.db`.
-- [ ] `.dockerignore`: excludes `node_modules`, `data`, `.env`, `.git`.
-- [ ] `GET /api/health` → `{ok:true}`, for health checks.
-- [ ] `deploy/docker-compose.yml`: `app`, `caddy` and an optional `kutt` (profile `kutt`), with named volumes `app-data`, `caddy-data` and `kutt-data`, and `restart: unless-stopped`.
-- [ ] `deploy/Caddyfile`: two sites from env (`{$APP_HOST}`, `{$KUTT_HOST}`), basic auth on the admin paths, security headers.
-- [ ] `deploy/.env.production.example`: `APP_HOST`, `KUTT_HOST`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH`, `CONVERSION_SECRET`, `ALLOWED_ORIGINS`, `DEMO_STORE`, `KUTT_API_KEY`.
-- [ ] `deploy/bootstrap.sh`: installs Docker on Ubuntu, clones the repo, runs `docker compose up -d`.
-- [ ] Test locally with `docker compose up` before deploying.
+## Phase 1: repo changes ✅ done
+| File | What it does |
+|---|---|
+| `Dockerfile` | `node:24-slim`, `npm ci --omit=dev`, non-root user, `HEALTHCHECK` on `/api/health`, data in `/data` |
+| `.dockerignore` | Keeps `node_modules`, data, secrets, docs and tests out of the image |
+| `deploy/docker-compose.yml` | `app` + `caddy` + `kutt` (profile `kutt`), named volumes, `restart: unless-stopped` |
+| `deploy/Caddyfile` | HTTPS for `APP_HOST` and `KUTT_HOST`, basic auth on admin paths, security headers |
+| `deploy/setup.sh` | One-time interactive setup: detects the public IP (IMDSv2), builds the sslip.io hostnames, generates secrets, hashes the admin password, writes `deploy/.env` and `deploy/auth.caddy` (mode 600) |
+| `deploy/bootstrap.sh` | Installs Docker, adds swap on small instances, runs `setup.sh` the first time, builds and starts, waits for health, loads demo data if chosen. Safe to re-run; it's also the update command. |
+| `src/app.js` | `GET /api/health`; `GET /api/links` now includes visits, orders and revenue per link |
 
-## Phase 2: AWS setup (console, about 20 minutes)
-1. **Budget alarm first.** Billing → Budgets: create a $10/month budget with an email alert at 50%.
-2. **Region:** `ap-south-1` (Mumbai) for low latency in India.
-3. **IAM role for the instance:** attach the `AmazonSSMManagedInstanceCore` policy, so we connect with **Session Manager** and don't need SSH keys or port 22.
-4. **Security group:** allow inbound TCP **80** and **443** from `0.0.0.0/0`. Nothing else.
-5. **Launch EC2:**
-   - Instance: Ubuntu 24.04 LTS (x86_64), **t3.small** (2 GB RAM; app + Kutt + Caddy fit comfortably).
-   - Storage: 20 GB gp3.
-   - Metadata: IMDSv2 required.
-   - Attach the role and the security group from steps 3 and 4.
-6. **Elastic IP:** allocate one and associate it with the instance. The IP, and so the sslip.io hostname, then stays the same across stop and start.
-7. **Connect** with Session Manager, then run `bootstrap.sh`.
-8. **Configure** `deploy/.env.production`:
-   - `APP_HOST=app.<ip-with-dashes>.sslip.io`
-   - generate a strong admin password and the conversion secret
-   - `DEMO_STORE=true` for the demo
-9. **Start:** `docker compose up -d`. Caddy fetches certificates automatically within about a minute.
-10. **Kutt (optional):**
-    - Open `https://go.<ip>.sslip.io`, create the admin account and generate an API key.
-    - Put the key in `.env.production` as `KUTT_API_KEY`, with `KUTT_URL=http://kutt:3000` (internal) and `DEFAULT_DOMAIN=go.<ip>.sslip.io`.
-    - Run `docker compose up -d` again.
+Test the stack locally: `cd deploy && ./setup.sh --local && docker compose up -d --build`, then open `https://localhost` and accept the local certificate. Tear down with `docker compose down -v && rm .env auth.caddy`.
+
+## Phase 2: AWS setup (you, in the console)
+1. **Budget alarm:** Billing → Budgets → $10/month, email alert at 50%.
+2. **Region:** `ap-south-1` (Mumbai).
+3. **Launch the instance** (EC2 → Launch instance):
+   - Name: `utm-demo`
+   - AMI: **Ubuntu Server 24.04 LTS (x86_64)**
+   - Type: **t3.small** (2 GB). Use `t3.micro` only if you skip Kutt; the script adds swap.
+   - Key pair: create one (`.pem`), or skip it if you'll use EC2 Instance Connect.
+   - Network → security group:
+     - SSH 22 from **My IP**
+     - HTTP 80 and HTTPS 443 from **Anywhere**
+   - Storage: 20 GB gp3
+   - Advanced → Metadata version: **V2 only**
+4. **Elastic IP:** EC2 → Elastic IPs → Allocate → Associate with `utm-demo`. Do this **before** step 6, because the URLs are built from this IP.
+5. **Connect:** EC2 → instance → **Connect** → *EC2 Instance Connect* (browser), or `ssh -i key.pem ubuntu@<elastic-ip>`.
+6. **Install:**
+   ```bash
+   git clone https://github.com/rahulgope45/UTM-URL.git && cd UTM-URL
+   sudo ./deploy/bootstrap.sh
+   ```
+   Answer the questions (username, password, Kutt Y/n, demo data Y/n). It prints your URLs at the end.
+7. **Kutt, right away:** the first visitor to `https://go.<ip>.sslip.io` becomes Kutt's admin, so open it immediately and create the admin account. Then:
+   - Settings → API → generate a key.
+   - `nano deploy/.env` → `KUTT_API_KEY=<key>`
+   - `sudo ./deploy/bootstrap.sh`
+8. **Updates later:** `git pull && sudo ./deploy/bootstrap.sh`
 
 ## Phase 3: verify
 - [ ] `https://app.<ip>.sslip.io/api/health` → `{"ok":true}` with a valid padlock.

@@ -1,0 +1,61 @@
+# Production stack: app + Caddy (HTTPS, password on admin pages) + optional Kutt.
+# Settings come from deploy/.env (created by setup.sh). Run from this folder:
+#   docker compose up -d --build
+name: utm
+
+services:
+  app:
+    build: ..
+    image: utm-app:latest
+    restart: unless-stopped
+    environment:
+      CONVERSION_SECRET: ${CONVERSION_SECRET:?run setup.sh first}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      DEMO_STORE: ${DEMO_STORE:-true}
+      CURRENCY: ${CURRENCY:-INR}
+      LOOKBACK_DAYS: ${LOOKBACK_DAYS:-30}
+      KUTT_URL: ${KUTT_URL:-}
+      KUTT_API_KEY: ${KUTT_API_KEY:-}
+    volumes:
+      - app-data:/data
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_HOST: ${APP_HOST:?run setup.sh first}
+      KUTT_HOST: ${KUTT_HOST:?run setup.sh first}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./auth.caddy:/etc/caddy/auth.caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+  kutt:
+    image: kutt/kutt:latest
+    profiles: ["kutt"]
+    restart: unless-stopped
+    environment:
+      JWT_SECRET: ${KUTT_JWT_SECRET:?run setup.sh first}
+      DEFAULT_DOMAIN: ${KUTT_HOST}
+      SITE_NAME: Short links
+      DB_FILENAME: /var/lib/kutt/data.sqlite
+      TRUST_PROXY: "true"
+    volumes:
+      - kutt-data:/var/lib/kutt
+    expose:
+      - "3000"
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:
+  kutt-data:

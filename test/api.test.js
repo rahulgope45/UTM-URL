@@ -109,4 +109,40 @@ test('link builder works without Kutt and warns', async () => {
   assert.match(data.warning, /Kutt is not configured/);
   const links = await (await fetch(`${base}/api/links`)).json();
   assert.equal(links[0].source, 'instagram');
+  assert.deepEqual([links[0].visits, links[0].orders], [0, 0]);
+});
+
+test('links report their own visits and orders', async () => {
+  await post('/api/links', { url: 'https://shop.example.com/', source: 'whatsapp', medium: 'social', campaign: 'link stats' });
+  const vid = 'cccccccc-3333-4333-8333-333333333333';
+  await post('/api/collect/touch', { visitorId: vid, utm: { source: 'whatsapp', medium: 'social', campaign: 'link_stats' } });
+  await post('/api/demo/checkout', { visitorId: vid, productId: 'tshirt' });
+  const link = (await (await fetch(`${base}/api/links`)).json()).find((l) => l.campaign === 'link_stats');
+  assert.deepEqual([link.visits, link.orders, link.revenue], [1, 1, 799]);
+});
+
+test('Kutt errors come back as 502 with Kutt\'s message', async () => {
+  const kuttApp = createApp({ db, config: { ...config, kutt: { baseUrl: 'https://kutt.test', apiKey: 'k' } } });
+  const srv = kuttApp.listen(0);
+  await new Promise((r) => srv.once('listening', r));
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => (String(url).startsWith('https://kutt.test')
+    ? new Response(JSON.stringify({ error: 'URL is not valid.' }), { status: 400 })
+    : realFetch(url, init));
+  try {
+    const res = await realFetch(`http://127.0.0.1:${srv.address().port}/api/links`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://shop.example.com/', source: 'a', medium: 'b', campaign: 'c', shorten: true }),
+    });
+    assert.equal(res.status, 502);
+    assert.match((await res.json()).error, /URL is not valid/);
+  } finally {
+    globalThis.fetch = realFetch;
+    srv.close();
+  }
+});
+
+test('health check', async () => {
+  const res = await fetch(`${base}/api/health`);
+  assert.deepEqual([res.status, await res.json()], [200, { ok: true }]);
 });
